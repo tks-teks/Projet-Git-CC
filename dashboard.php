@@ -1,150 +1,137 @@
 <?php
-include 'db.php';
 session_start();
+require_once 'db.php';
 
-if (!isset($_SESSION['pharmacie_id'])) {
+if (!isset($_SESSION['id_pharma'])) {
     header("Location: login.php");
-    exit;
+    exit();
 }
 
-$id = (int) $_SESSION['pharmacie_id'];
-$msg = "";
+$id_pharma = $_SESSION['id_pharma'];
 
-// CSRF token simple
-if (!isset($_SESSION['token'])) {
-    try {
-        $_SESSION['token'] = bin2hex(random_bytes(32));
-    } catch (Exception $e) {
-        $_SESSION['token'] = bin2hex(openssl_random_pseudo_bytes(32));
-    }
-}
+// Traitement du formulaire d'ajout de médicament et stock
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $nom_medoc = trim($_POST['nom_medoc'] ?? '');
+    $description = trim($_POST['description'] ?? '');
+    $quantite = (int)($_POST['quantite'] ?? 0);
 
-// Ajouter / mettre à jour un stock
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
-    // Vérification du token CSRF
-    if (!isset($_POST['token']) || !hash_equals($_SESSION['token'], $_POST['token'])) {
-        $msg = "Requête invalide (token).";
-    } else {
-        // Validation des entrées
-        $id_medicament = isset($_POST['id_medicament']) ? (int)$_POST['id_medicament'] : 0;
-        $quantite = isset($_POST['quantite']) ? (int)$_POST['quantite'] : 0;
-        if ($id_medicament <= 0 || $quantite < 0) {
-            $msg = "Données invalides.";
+    if ($nom_medoc !== '' && $quantite >= 0) {
+        // Ajouter le médicament s'il n'existe pas
+        $stmt = $conn->prepare("SELECT id_medoc FROM medicaments WHERE nom = ?");
+        $stmt->bind_param("s", $nom_medoc);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        if ($res && $res->num_rows > 0) {
+            $med = $res->fetch_assoc();
+            $id_medoc = $med['id_medoc'];
         } else {
-            // Vérifier si la ligne existe
-            $check = $conn->prepare("SELECT id FROM stock_pharmacie WHERE id_pharmacie = ? AND id_medicament = ?");
-            if ($check === false) {
-                $msg = "Erreur serveur.";
-            } else {
-                $check->bind_param("ii", $id, $id_medicament);
-                $check->execute();
-                $res = $check->get_result();
-
-                if ($res && $res->num_rows > 0) {
-                    $upd = $conn->prepare("UPDATE stock_pharmacie SET quantite = ? WHERE id_pharmacie = ? AND id_medicament = ?");
-                    if ($upd === false) {
-                        $msg = "Erreur serveur (update).";
-                    } else {
-                        $upd->bind_param("iii", $quantite, $id, $id_medicament);
-                        if ($upd->execute()) {
-                            $msg = "Stock mis à jour.";
-                        } else {
-                            $msg = "Erreur lors de la mise à jour.";
-                        }
-                        $upd->close();
-                    }
-                } else {
-                    $ins = $conn->prepare("INSERT INTO stock_pharmacie (id_pharmacie, id_medicament, quantite) VALUES (?, ?, ?)");
-                    if ($ins === false) {
-                        $msg = "Erreur serveur (insert).";
-                    } else {
-                        $ins->bind_param("iii", $id, $id_medicament, $quantite);
-                        if ($ins->execute()) {
-                            $msg = "Stock ajouté.";
-                        } else {
-                            $msg = "Erreur lors de l'insertion.";
-                        }
-                        $ins->close();
-                    }
-                }
-
-                $check->close();
-            }
+            $insert_med = $conn->prepare("INSERT INTO medicaments (nom, description) VALUES (?, ?)");
+            $insert_med->bind_param("ss", $nom_medoc, $description);
+            $insert_med->execute();
+            $id_medoc = $insert_med->insert_id;
+            $insert_med->close();
         }
+        $stmt->close();
+
+        // Vérifier si le médicament est déjà dans le stock de la pharmacie
+        $stmt2 = $conn->prepare("SELECT id, quantite FROM stock_pharmacie WHERE id_pharmacie = ? AND id_medicament = ?");
+        $stmt2->bind_param("ii", $id_pharma, $id_medoc);
+        $stmt2->execute();
+        $res2 = $stmt2->get_result();
+
+        if ($res2 && $res2->num_rows > 0) {
+            // Mise à jour
+            $stock = $res2->fetch_assoc();
+            $update = $conn->prepare("UPDATE stock_pharmacie SET quantite = ? WHERE id = ?");
+            $update->bind_param("ii", $quantite, $stock['id']);
+            $update->execute();
+            $update->close();
+        } else {
+            // Ajout
+            $insert_stock = $conn->prepare("INSERT INTO stock_pharmacie (id_pharmacie, id_medicament, quantite) VALUES (?, ?, ?)");
+            $insert_stock->bind_param("iii", $id_pharma, $id_medoc, $quantite);
+            $insert_stock->execute();
+            $insert_stock->close();
+        }
+        $stmt2->close();
     }
 }
+
+// Récupération du stock complet de la pharmacie
+$sql = "SELECT s.id, m.nom, s.quantite 
+        FROM stock_pharmacie s
+        JOIN medicaments m ON s.id_medicament = m.id_medoc
+        WHERE s.id_pharmacie = ?";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $id_pharma);
+$stmt->execute();
+$res = $stmt->get_result();
+$stocks = [];
+while ($row = $res->fetch_assoc()) {
+    $stocks[] = $row;
+}
+$stmt->close();
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Pharmacie</title>
+    <title>Dashboard - Pharmacie</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="max-w-4xl mx-auto mt-10 bg-white p-6 shadow-lg rounded-2xl">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-blue-600">📦 Gestion du stock</h2>
-            <a href="logout.php" class="text-red-500 hover:underline">Déconnexion</a>
-        </div>
+<body class="bg-gray-50 text-gray-800">
 
-        <?php if ($msg): ?>
-            <p class="text-sm text-gray-700 mb-4"><?= htmlspecialchars($msg, ENT_QUOTES, 'UTF-8') ?></p>
-        <?php endif; ?>
+<header class="bg-green-700 text-white p-4 flex justify-between items-center">
+    <h1 class="text-xl font-bold">PharmaConnect</h1>
+    <a href="logout.php" class="bg-red-500 px-3 py-1 rounded hover:bg-red-600">Déconnexion</a>
+</header>
 
-        <form method="POST" class="flex gap-4 mb-6" novalidate>
-            <select name="id_medicament" class="border p-2 rounded-lg flex-1" required>
-                <?php
-                $meds = $conn->query("SELECT id, nom FROM medicaments ORDER BY nom ASC");
-                if ($meds) {
-                    while ($m = $meds->fetch_assoc()) {
-                        $mid = (int)$m['id'];
-                        $mnom = htmlspecialchars($m['nom'], ENT_QUOTES, 'UTF-8');
-                        echo "<option value='{$mid}'>{$mnom}</option>";
-                    }
-                    $meds->close();
-                } else {
-                    echo "<option value=''>Aucun médicament</option>";
-                }
-                ?>
-            </select>
+<div class="p-6 max-w-4xl mx-auto">
 
-            <input type="number" name="quantite" placeholder="Quantité" class="border p-2 rounded-lg w-32" required min="0" step="1">
-            <input type="hidden" name="token" value="<?= htmlspecialchars($_SESSION['token'], ENT_QUOTES, 'UTF-8') ?>">
-            <button class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">Enregistrer</button>
-        </form>
+    <h2 class="text-2xl font-semibold mb-4 text-center">Gestion des Médicaments</h2>
 
-        <h3 class="text-lg font-semibold mb-3">Stock actuel :</h3>
-        <table class="w-full border">
-            <thead>
-                <tr class="bg-gray-200">
-                    <th class="p-2 text-left">Médicament</th>
-                    <th class="p-2 text-left">Quantité</th>
+    <form method="POST" class="bg-white p-4 rounded-lg shadow mb-8">
+        <h3 class="text-lg font-semibold mb-2">Ajouter / Mettre à jour un médicament</h3>
+
+        <label class="block mb-2 font-medium">Nom du médicament</label>
+        <input type="text" name="nom_medoc" required class="border rounded p-2 w-full mb-3">
+
+        <label class="block mb-2 font-medium">Description (optionnelle)</label>
+        <textarea name="description" class="border rounded p-2 w-full mb-3"></textarea>
+
+        <label class="block mb-2 font-medium">Quantité</label>
+        <input type="number" name="quantite" required min="0" class="border rounded p-2 w-full mb-4">
+
+        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+            ✅ Ajouter / Mettre à jour
+        </button>
+    </form>
+
+    <h3 class="text-lg font-semibold mb-2">📦 Médicaments en stock</h3>
+    <?php if (count($stocks) > 0): ?>
+        <table class="w-full bg-white rounded shadow">
+            <thead class="bg-green-600 text-white">
+                <tr>
+                    <th class="p-2">Nom</th>
+                    <th class="p-2">Quantité</th>
                 </tr>
             </thead>
             <tbody>
-            <?php
-            $stocks_stmt = $conn->prepare("SELECT m.nom, s.quantite FROM stock_pharmacie s JOIN medicaments m ON s.id_medicament = m.id WHERE s.id_pharmacie = ?");
-            if ($stocks_stmt) {
-                $stocks_stmt->bind_param("i", $id);
-                $stocks_stmt->execute();
-                $stocks = $stocks_stmt->get_result();
-                if ($stocks && $stocks->num_rows > 0) {
-                    while ($row = $stocks->fetch_assoc()) {
-                        $nom = htmlspecialchars($row['nom'], ENT_QUOTES, 'UTF-8');
-                        $qte = (int)$row['quantite'];
-                        echo "<tr><td class='p-2'>{$nom}</td><td class='p-2'>{$qte}</td></tr>";
-                    }
-                } else {
-                    echo "<tr><td class='p-2' colspan='2'>Aucun stock enregistré.</td></tr>";
-                }
-                $stocks_stmt->close();
-            } else {
-                echo "<tr><td class='p-2' colspan='2'>Impossible de récupérer le stock.</td></tr>";
-            }
-            ?>
+                <?php foreach ($stocks as $s): ?>
+                    <tr class="border-b hover:bg-gray-50">
+                        <td class="p-2"><?= htmlspecialchars($s['nom']) ?></td>
+                        <td class="p-2"><?= $s['quantite'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
             </tbody>
         </table>
-    </div>
+    <?php else: ?>
+        <p class="text-gray-600 mt-2">Aucun médicament ajouté pour le moment.</p>
+    <?php endif; ?>
+
+</div>
+
 </body>
 </html>

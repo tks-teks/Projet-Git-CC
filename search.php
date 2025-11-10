@@ -7,11 +7,12 @@ if ($q === '') {
     exit;
 }
 
+// Préparer la requête
 $sql = "SELECT p.nom AS pharmacie, p.adresse, p.latitude, p.longitude, p.contact, s.quantite, m.nom AS medicament
-    FROM stock_pharmacie s
-    JOIN pharmacies p ON s.id_pharmacie = p.id
-    JOIN medicaments m ON s.id_medicament = m.id
-    WHERE m.nom LIKE ?";
+        FROM stock_pharmacie s
+        JOIN pharmacies p ON s.id_pharmacie = p.id_pharma
+        JOIN medicaments m ON s.id_medicament = m.id_medoc
+        WHERE m.nom LIKE ?";
 
 $stmt = $conn->prepare($sql);
 if ($stmt === false) {
@@ -21,8 +22,17 @@ if ($stmt === false) {
 $like = "%{$q}%";
 $stmt->bind_param("s", $like);
 $stmt->execute();
-$result = $stmt->get_result();
+$res = $stmt->get_result(); // Si get_result pose problème, on peut remplacer par bind + fetch_assoc
+
+$results = [];
+if ($res) {
+    while ($row = $res->fetch_assoc()) {
+        $results[] = $row;
+    }
+}
+$stmt->close();
 ?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -39,8 +49,8 @@ $result = $stmt->get_result();
         </h2>
 
         <div class="grid gap-4">
-            <?php if ($result && $result->num_rows > 0): ?>
-                <?php while ($row = $result->fetch_assoc()): ?>
+            <?php if (count($results) > 0): ?>
+                <?php foreach ($results as $row): ?>
                     <div class="bg-white shadow rounded-lg p-4 flex justify-between items-center">
                         <div>
                             <h3 class="font-semibold text-lg text-gray-800"><?= htmlspecialchars($row['pharmacie'], ENT_QUOTES, 'UTF-8') ?></h3>
@@ -55,7 +65,7 @@ $result = $stmt->get_result();
                             <?php endif; ?>
                         </div>
                     </div>
-                <?php endwhile; ?>
+                <?php endforeach; ?>
             <?php else: ?>
                 <p class="text-gray-600">Aucune pharmacie ne propose ce médicament pour le moment.</p>
             <?php endif; ?>
