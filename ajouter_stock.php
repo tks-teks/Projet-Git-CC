@@ -10,9 +10,9 @@ if (!isset($_SESSION['id_pharma'])) {
 $id_pharma = $_SESSION['id_pharma'];
 $nom_medoc = trim($_POST['nom_medoc'] ?? '');
 $description = trim($_POST['description'] ?? '');
-$quantite = (int)($_POST['quantite'] ?? 0);
+$quantite = max(0, (int)($_POST['quantite'] ?? 0)); // quantité minimale = 0
 
-if ($nom_medoc !== '' && $quantite >= 0) {
+if ($nom_medoc !== '') {
     // Vérifier si le médicament existe déjà
     $stmt = $conn->prepare("SELECT id_medoc FROM medicaments WHERE nom = ?");
     $stmt->bind_param("s", $nom_medoc);
@@ -55,6 +55,6 @@ if ($nom_medoc !== '' && $quantite >= 0) {
     $stmt2->close();
 }
 
+// Redirection vers le dashboard
 header("Location: dashboard.php");
 exit();
-?>
