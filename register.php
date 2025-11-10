@@ -19,7 +19,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $msg = "Email invalide.";
     } else {
         // Vérifier si l'email existe déjà
-        $check = $conn->prepare("SELECT id FROM pharmacies WHERE email = ?");
+        $check = $conn->prepare("SELECT id_pharma FROM pharmacies WHERE email = ?");
         if ($check === false) {
             $msg = "Erreur serveur (préparation).";
         } else {
