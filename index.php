@@ -38,7 +38,7 @@ $q = trim($_GET['q'] ?? '');
 
         <p class="text-center mt-6 text-sm text-gray-600">
             Vous êtes une pharmacie ? 
-            <a href="login.php" class="text-blue-600 hover:underline font-medium">Connectez-vous ici</a>
+            <a href="./pages/login.php" class="text-blue-600 hover:underline font-medium">Connectez-vous ici</a>
         </p>
     </div>
 

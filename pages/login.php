@@ -1,5 +1,5 @@
 <?php
-include 'db.php';
+include __DIR__ . '/../db/db.php';
 session_start();
 
 $msg = "";
@@ -25,7 +25,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             // Utiliser bind_result à la place de get_result
             $stmt->bind_result($id_pharma, $hash);
             if ($stmt->fetch()) {
-                if (password_verify($password, $hash)) {
+                // Vérifier que $hash est bien une chaîne non nulle avant d'appeler password_verify
+                if (is_string($hash) && $hash !== '' && password_verify($password, $hash)) {
                     session_regenerate_id(true);
                     $_SESSION['id_pharma'] = $id_pharma;
                     header("Location: dashboard.php");

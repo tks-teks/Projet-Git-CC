@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'db.php';
+require_once __DIR__ . '/../db/db.php';
 
 if (!isset($_SESSION['id_pharma'])) {
     header("Location: login.php");

@@ -1,5 +1,5 @@
 <?php
-include 'db.php';
+include __DIR__ .'./db/db.php';
 
 $q = trim($_GET['q'] ?? '');
 if ($q === '') {
