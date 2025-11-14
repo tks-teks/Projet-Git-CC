@@ -155,9 +155,9 @@ $stmt->close();
                         </td>
                         <td class="p-2 flex gap-2">
                             <a href="?delete=<?= $s['id'] ?>" 
-                            class="text-red-500 hover:underline"
-                            onclick="return confirm('Voulez-vous vraiment supprimer ce médicament ?');">
-                            🗑 Supprimer
+                                class="text-red-500 hover:underline"
+                                onclick="return confirm('Voulez-vous vraiment supprimer ce médicament ?');">
+                                🗑 Supprimer
                             </a>
                             <button class="edit-btn text-blue-600 hover:underline" 
                                     data-id="<?= $s['id'] ?>" 
